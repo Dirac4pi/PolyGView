@@ -1,9 +1,10 @@
 '''
-convert .gjf to .xyz
+Convert .gjf to .xyz
 coding:UTF-8
 env:base
 '''
 
+#-------------------------------------------------------------------------------
 def isfloat(string:str) -> bool:
   '''
   Determine whether the string is a float or not
@@ -18,6 +19,7 @@ def isfloat(string:str) -> bool:
   else:
     return True
 
+#-------------------------------------------------------------------------------
 def iscood(line:str) -> bool:
   '''
   Determine whether the string is a coordinate or not
@@ -37,6 +39,7 @@ def iscood(line:str) -> bool:
   else:
     return False
 
+#-------------------------------------------------------------------------------
 def gjf2xyz(gjf:str) -> None:
   '''
   Convert gjf to xyz
@@ -82,6 +85,7 @@ def gjf2xyz(gjf:str) -> None:
       wxyz.write('\n')
       wxyz.close()
 
+#===============================================================================
 if __name__ == "__main__":
   import sys
   gjf2xyz(*sys.argv[1:])

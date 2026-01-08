@@ -4,9 +4,8 @@ coding:UTF-8
 env:base
 '''
 
-import sys
-
-def isint(string: str) -> bool:
+#-------------------------------------------------------------------------------
+def isint(string:str) -> bool:
   '''
   Determine whether the string is an integer or not
   --
@@ -19,8 +18,8 @@ def isint(string: str) -> bool:
     return False
   else:
     return True
-  
 
+#-------------------------------------------------------------------------------
 def celldump(jobname:str) -> str:
   '''
   Extract the cell information from CP2K output file
@@ -64,8 +63,8 @@ def celldump(jobname:str) -> str:
     cellinfo = f'Lattice=\"{a[0]} {a[1]} {a[2]}\"'+ \
                           f'Properties=species:S:1:pos:R:3\n'
   return cellinfo
-  
 
+#-------------------------------------------------------------------------------
 def xyzdump(input_xyz: str, output_xyz: str) -> None:
   '''
   Extract the last frame from a multi-frame XYZ file
@@ -99,9 +98,9 @@ def xyzdump(input_xyz: str, output_xyz: str) -> None:
   with open(output_xyz, "w") as f:
     f.writelines(last_frame)
 
-
-
+#===============================================================================
 if __name__ == "__main__":
+  import sys
   if len(sys.argv) != 3:
     print("Usage: xyzdump input.[xyz|trj|tre|trej]")
     sys.exit(1)

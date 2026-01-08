@@ -7,7 +7,6 @@ env:base
 from os import path, remove
 from re import search
 from subprocess import call
-import sys
 
 elements = {
   'H' : 1, 'He': 2, 'Li': 3, 'Be': 4, 'B' : 5, 'C' : 6, 'N' : 7, 'O' : 8,
@@ -25,6 +24,7 @@ elements = {
   'Bk':97, 'Cf':98, 'Es':99
 }
 
+#-------------------------------------------------------------------------------
 def isint(string: str) -> bool:
   '''
   Determine whether the string is an integer or not
@@ -39,6 +39,7 @@ def isint(string: str) -> bool:
   else:
     return True
 
+#-------------------------------------------------------------------------------
 xyzlines = None
 Nframe = 0
 framestarts = []
@@ -83,6 +84,7 @@ def load_xyz(xyz_file:str, frame:int):
   coord = xyzlines[ii+2:jj]
   return Natom, title, coord
 
+#-------------------------------------------------------------------------------
 def single_xyz_edit(xyz_file:str) -> None:
   '''
   Visualise and edit single-frame xyz file via GaussView, support lattice info.
@@ -149,6 +151,7 @@ Converted from {xyz_file}
   remove(gjf_file)
   print(f"Edited structure saved to {edited_xyz}")
 
+#-------------------------------------------------------------------------------
 def log_geom(xyz_coords:str):
   '''
   Docstring for log_geom
@@ -171,6 +174,7 @@ def log_geom(xyz_coords:str):
       log_coords = log_coords + line
   return log_coords
 
+#-------------------------------------------------------------------------------
 def multi_xyz_visual(xyz_file:str) -> None:
   '''
   Visualise multi-frame xyz file via GaussView.
@@ -230,12 +234,72 @@ f'''GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad
     return
   remove(log_file)
 
+#-------------------------------------------------------------------------------
+def out_freq_visual(outfile:str) -> None:
+  '''
+  Visualise vibrational modes from Gaussian/ORCA output file via GaussView.
+  --
+  :outfile: input output file name\n
+  return: None
+  '''
+  try:
+    open(outfile, 'r')
+  except:
+    print(f"Error: File {outfile} can not be opened.")
+    exit(1)
+  else:
+    found = ''
+    with open(outfile, 'r') as f:
+      line_count = 0
+      for line in f:
+        if 'Gaussian' in line:
+          print('This is Gaussian output file')
+          found = 'Gaussian'
+          break
+        elif 'O   R   C   A' in line or 'Frank Neese' in line:
+          print('This is ORCA output file')
+          found = 'ORCA'
+          break
+        line_count += 1
+        if line_count >= 100 and found == '':
+          break
+    if found == '' and line_count > 0:
+      print("Unrecognize output file type.")
+      exit(1)
+    elif found == 'Gaussian':
+      call(['/home/lky/gv/gview.sh', outfile])
+    elif found == 'ORCA':
+      call(['/home/lky/gv/OfakeG', outfile])  # convert ORCA output by OfakeG
+      outfile_gau = outfile.rstrip('.out') + "_fake.out"
+      call(['/home/lky/gv/gview.sh', outfile_gau])
+      remove(outfile_gau)
 
+#-------------------------------------------------------------------------------
+def MOLDEN_freq_visual(MOLDEN_file:str) -> None:
+  '''
+  Visualise vibrational modes from CP2K MOLDEN file via GaussView
+  --
+  :MOLDEN_file: input CP2K MOLDEN file name\n
+  return: None
+  '''
+  try:
+    open(MOLDEN_file, 'r')
+  except:
+    print(f"Error: File {MOLDEN_file} can not be opened.")
+    exit(1)
+  else:
+    call(['/home/lky/gv/MfakeG', MOLDEN_file])
+    outfile_gau = MOLDEN_file.rstrip('.mol') + "_fake.out"
+    call(['/home/lky/gv/gview.sh', outfile_gau])
+    remove(outfile_gau)
+
+#===============================================================================
 if __name__ == "__main__":
+  import sys
   if len(sys.argv) == 1:
     call(['/home/lky/gv/gview.sh'])
   elif len(sys.argv) != 2:
-    print("Usage: gview input.[xyz|trj|gjf|log|out|cif|fch]")
+    print("Usage: gview input.[xyz|trj|gjf|log|out|cif|fch|mol]")
     exit(1)
   else:
     input_file = sys.argv[1]
@@ -264,11 +328,13 @@ if __name__ == "__main__":
     elif input_file.endswith('.log'):
       call(['/home/lky/gv/gview.sh', input_file])
     elif input_file.endswith('.out'):
-      call(['/home/lky/gv/gview.sh', input_file])
+      out_freq_visual(input_file)
     elif input_file.endswith('.cif'):
       call(['/home/lky/gv/gview.sh', input_file])
     elif input_file.endswith('.fch'):
       call(['/home/lky/gv/gview.sh', input_file])
+    elif input_file.endswith('.mol'):
+      MOLDEN_freq_visual(input_file)
     else:
       print("unrecognize input file type")
       exit(1)
