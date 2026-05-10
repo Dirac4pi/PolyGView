@@ -29,7 +29,11 @@ programs and not affect the functions that Gaussview supports natively.<br>
 [OfakeG](http://sobereva.com/soft/OfakeG/) and
 [MfakeG](http://sobereva.com/soft/MfakeG/) in GaussView directory,
 gview.py can invoke them to visualize vibration modes in ORCA output files and
-CP2K MOLDEN format files.
+CP2K MOLDEN format files.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;If you have install
+[Obabel 2.4.x](https://github.com/openbabel/openbabel/releases) and add it to
+`$PATH`, gview.py can invoke it to visualize 2D structures in ChemDraw .cdxml
+files.
 
 ## gjf2xyz.py
 

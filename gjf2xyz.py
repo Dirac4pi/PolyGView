@@ -47,7 +47,7 @@ def gjf2xyz(gjf:str) -> None:
   :gjf: gjf file to be converted.
   '''
   with open(gjf, 'r', encoding='utf-8') as rgjf:
-    xyz = gjf.rstrip('.gjf') + '.xyz'
+    xyz = gjf.removesuffix('.gjf') + '.xyz'
     wxyz = open(xyz, 'w', encoding='utf-8')
     cood = []
     lattice = []

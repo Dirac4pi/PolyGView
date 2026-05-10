@@ -270,7 +270,7 @@ def out_freq_visual(outfile:str) -> None:
       call(['/home/lky/gv/gview.sh', outfile])
     elif found == 'ORCA':
       call(['/home/lky/gv/OfakeG', outfile])  # convert ORCA output by OfakeG
-      outfile_gau = outfile.rstrip('.out') + "_fake.out"
+      outfile_gau = outfile.removesuffix('.out') + "_fake.out"
       call(['/home/lky/gv/gview.sh', outfile_gau])
       remove(outfile_gau)
 
@@ -289,9 +289,33 @@ def MOLDEN_freq_visual(MOLDEN_file:str) -> None:
     exit(1)
   else:
     call(['/home/lky/gv/MfakeG', MOLDEN_file])
-    outfile_gau = MOLDEN_file.rstrip('.mol') + "_fake.out"
+    outfile_gau = MOLDEN_file.removesuffix('.mol') + "_fake.out"
     call(['/home/lky/gv/gview.sh', outfile_gau])
     remove(outfile_gau)
+
+#-------------------------------------------------------------------------------
+def cdxml_visual(cdxml_file:str) -> None:
+  '''
+  Visualise ChemDraw XML file via GaussView
+  --
+  :cdxml_file: input ChemDraw XML file name\n
+  return: None
+  '''
+  try:
+    open(cdxml_file, 'r')
+  except:
+    print(f"Error: File {cdxml_file} can not be opened.")
+    exit(1)
+  else:
+    gjf_file = cdxml_file.removesuffix('.cdxml') + ".gjf"
+    call(['obabel',
+            cdxml_file,
+            '-O', gjf_file,
+            '--gen3d',
+            '--minimize',
+            '--ff', 'MMFF94',
+            '-h'             ])
+    call(['/home/lky/gv/gview.sh', gjf_file])
 
 #===============================================================================
 if __name__ == "__main__":
@@ -333,8 +357,16 @@ if __name__ == "__main__":
       call(['/home/lky/gv/gview.sh', input_file])
     elif input_file.endswith('.fch'):
       call(['/home/lky/gv/gview.sh', input_file])
-    elif input_file.endswith('.mol'):
+    elif input_file.endswith('.molden') or input_file.endswith('.molden.input'):
       MOLDEN_freq_visual(input_file)
+    elif input_file.endswith('.mol') or input_file.endswith('.mol2'):
+      call(['/home/lky/gv/gview.sh', input_file])
+    elif input_file.endswith('.pdb'):
+      call(['/home/lky/gv/gview.sh', input_file])
+    elif input_file.endswith('.cub'):
+      call(['/home/lky/gv/gview.sh', input_file])
+    elif input_file.endswith('.cdxml'):
+      cdxml_visual(input_file)
     else:
       print("unrecognize input file type")
       exit(1)
