@@ -59,7 +59,7 @@ invariant. Usage: `drmsd conf1.xyz conf2.xyz`.<br>
 
 $$
 \begin{aligned}
-\text{dRMSD} &= \sqrt{\frac{2}{N(N-1)} \sum_{i<j}^{N} (d_{ij,A} - d_{ij,B})^2} \\
-\text{dMAXD} &= \max_{i < j} |d_{ij,A} - d_{ij,B}|
+\text{dRMSD} &= \sqrt{\frac{2}{N(N-1)} \sum_{i \lt j}^{N} (d_{ij,A} - d_{ij,B})^2} \\
+\text{dMAXD} &= \max_{i \lt j} |d_{ij,A} - d_{ij,B}|
 \end{aligned}
 $$
