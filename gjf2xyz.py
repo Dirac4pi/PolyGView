@@ -1,6 +1,6 @@
 '''
 Convert .gjf to .xyz
-coding:UTF-8
+Author: Dirac4pi
 env:base
 '''
 

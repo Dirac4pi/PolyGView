@@ -1,6 +1,6 @@
 '''
 GaussView Laucher with support for xyz editing
-coding:UTF-8
+Author: Dirac4pi
 env:base
 '''
 

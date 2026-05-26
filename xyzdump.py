@@ -1,6 +1,6 @@
 '''
 Extract the last frame from a multi-frame XYZ file
-coding:UTF-8
+Author: Dirac4pi
 env:base
 '''
 
