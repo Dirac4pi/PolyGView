@@ -53,8 +53,9 @@ def load_xyz(xyz_file:str, frame:int):
   :Natom: number of atoms of specific frame\n
   :title: title of specific frame\n
   :coord: atom coordinates of specific frame\n
-  return: Natom, title, coord
+  return: Natom, title, coord, fcoords
   '''
+  import numpy as np
   global xyzlines, Nframe, framestarts, frameends
   if xyzlines is None:
     try:
@@ -82,7 +83,12 @@ def load_xyz(xyz_file:str, frame:int):
   Natom = int(xyzlines[ii].strip())
   title = xyzlines[ii+1].strip()
   coord = xyzlines[ii+2:jj]
-  return Natom, title, coord
+  fcoords = np.zeros((Natom, 3), dtype=float)
+  # Parse coordinates starting from the third line
+  for i in range(Natom):
+    parts = coord[i].split()
+    fcoords[i] = [float(parts[1]), float(parts[2]), float(parts[3])]
+  return Natom, title, coord, fcoords
 
 #-------------------------------------------------------------------------------
 def single_xyz_edit(xyz_file:str) -> None:
@@ -92,7 +98,7 @@ def single_xyz_edit(xyz_file:str) -> None:
   :xyz_file: input file name\n
   return: None
   '''
-  Natom, title, coord = load_xyz(xyz_file, 1)
+  Natom, title, coord, fcoords = load_xyz(xyz_file, 1)
   # Generate .gjf (coordinates only)
   gjf_file = path.splitext(xyz_file)[0] + "_fromxyz.gjf"
   with open(gjf_file, 'w') as f:
@@ -166,6 +172,7 @@ def log_geom(xyz_coords:str):
     x = float(xyz_coords[i].split()[1])
     y = float(xyz_coords[i].split()[2])
     z = float(xyz_coords[i].split()[3])
+
     line = f'     {i+1:3d}         {index:3d}' + \
            f'           0       {x:10.6f}   {y:10.6f}   {z:10.6f}'
     if i != len(xyz_coords)-1:
@@ -182,6 +189,7 @@ def multi_xyz_visual(xyz_file:str) -> None:
   :xyz_file: input file name\n
   return: None
   '''
+  from drmsd import drmsd, dmaxd
   log_file = path.splitext(xyz_file)[0] + "_fromxyz.log"
   with open(log_file, 'w') as f:
     header = \
@@ -194,7 +202,15 @@ GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad'''
     f.write(header)
     f.write("\n")
     for i in range(1, Nframe+1):
-      Natom, title, coords = load_xyz(xyz_file, i)
+      if i != 1:
+        fcoords_prev = fcoords
+      Natom, title, coords, fcoords = load_xyz(xyz_file, i)
+      if i == 1:
+        vdrmsd = 0.0
+        vdmaxd = 0.0
+      else:
+        vdrmsd = drmsd(fcoords_prev, fcoords)
+        vdmaxd = dmaxd(fcoords_prev, fcoords)
       try:# for ORCA and CP2K, last value of title line is energy.
         energy = float(title.split()[-1])
       except ValueError:
@@ -218,8 +234,8 @@ f'''GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad
          Item               Value     Threshold  Converged?
  Maximum Force            1.000000     1.000000     NO
  RMS     Force            1.000000     1.000000     NO
- Maximum Displacement     1.000000     1.000000     NO
- RMS     Displacement     1.000000     1.000000     NO'''
+ Maximum Displacement     {vdmaxd:.7f}     1.000000     NO
+ RMS     Displacement     {vdrmsd:.7f}     1.000000     NO'''
       f.write(framer)
       f.write("\n")
     footer = \
@@ -328,7 +344,7 @@ if __name__ == "__main__":
   else:
     input_file = sys.argv[1]
     if input_file.endswith('.xyz'):
-      Natom, title, coord = load_xyz(input_file, 1)
+      Natom, title, coord, fcoords = load_xyz(input_file, 1)
       print(f'{Nframe} frames found in {input_file}')
       if Nframe == 1:
         single_xyz_edit(input_file)
@@ -338,7 +354,7 @@ if __name__ == "__main__":
         print("Error: No valid frames found in the xyz file.")
         exit(1)
     elif input_file.endswith('.trj'):
-      Natom, title, coord = load_xyz(input_file, 1)
+      Natom, title, coord, fcoords = load_xyz(input_file, 1)
       print(f'{Nframe} frames found in {input_file}')
       if Nframe == 1:
         single_xyz_edit(input_file)
