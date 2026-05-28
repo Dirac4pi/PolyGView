@@ -211,7 +211,8 @@ GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad'''
       else:
         vdrmsd = drmsd(fcoords_prev, fcoords)
         vdmaxd = dmaxd(fcoords_prev, fcoords)
-      try:# for ORCA and CP2K, last value of title line is energy.
+      # at least for ORCA, geomeTRIC and CP2K, last value of title line is energy.
+      try:
         energy = float(title.split()[-1])
       except ValueError:
         energy = -675.0
@@ -251,9 +252,9 @@ f'''GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad
   remove(log_file)
 
 #-------------------------------------------------------------------------------
-def out_freq_visual(outfile:str) -> None:
+def OUT_visual(outfile:str) -> None:
   '''
-  Visualise vibrational modes from Gaussian/ORCA output file via GaussView.
+  Visualise OPT, FREQ, OPT FREQ jobs from Gaussian/ORCA output file.
   --
   :outfile: input output file name\n
   return: None
@@ -287,6 +288,58 @@ def out_freq_visual(outfile:str) -> None:
     elif found == 'ORCA':
       call(['/home/lky/gv/OfakeG', outfile])  # convert ORCA output by OfakeG
       outfile_gau = outfile.removesuffix('.out') + "_fake.out"
+      # add force on nuclears
+      all_gauforces = []
+      orcagrad = []
+      with open(outfile, 'r') as f:
+        while True:
+          line = f.readline()
+          if not line:
+            break
+          if line.startswith('CARTESIAN GRADIENT'):
+            line = f.readline()
+            line = f.readline()
+            line = f.readline()
+            while ":" in line:
+              orcagrad.append(line.strip())
+              line = f.readline()
+            gauforce = \
+'''\n -------------------------------------------------------------------
+ Center     Atomic                   Forces (Hartrees/Bohr)
+ Number     Number              X              Y              Z
+ -------------------------------------------------------------------'''
+            for i in range(len(orcagrad)):
+              parts = orcagrad[i].split()
+              index = int(parts[0])
+              atomic_num = elements.get(parts[1], 0)
+              fx = -float(parts[3])    # force = - gradient
+              fy = -float(parts[4])
+              fz = -float(parts[5])
+              gauforce += f'\n {index:3d}       {atomic_num:3d}      ' +\
+                          f'{fx:14.6f}   {fy:14.6f}   {fz:14.6f}'
+            gauforce += \
+'\n -------------------------------------------------------------------\n'
+            all_gauforces.append(gauforce)
+          orcagrad = []
+      with open(outfile_gau, 'r') as fo:
+        gau_lines = fo.readlines()
+      new_gau_lines = []
+      oframe = 0
+      for lineo in gau_lines:
+        new_gau_lines.append(lineo)
+        if 'SCF Done:' in lineo:
+          if oframe < len(all_gauforces):
+            new_gau_lines.append(all_gauforces[oframe])
+            oframe += 1
+        # ORCA does not output atomic force information during frequency
+        # calculations; by default, we use the same data as the final
+        # frame of the optimization.
+        if oframe >= 1 and 'Harmonic frequencies' in lineo:
+          new_gau_lines.append(all_gauforces[oframe-1])
+          oframe += 1
+      with open(outfile_gau, 'w') as fo:
+        fo.writelines(new_gau_lines)
+      print('\nForces on nuclears have been added!')
       call(['/home/lky/gv/gview.sh', outfile_gau])
       remove(outfile_gau)
 
@@ -368,7 +421,7 @@ if __name__ == "__main__":
     elif input_file.endswith('.log'):
       call(['/home/lky/gv/gview.sh', input_file])
     elif input_file.endswith('.out'):
-      out_freq_visual(input_file)
+      OUT_visual(input_file)
     elif input_file.endswith('.cif'):
       call(['/home/lky/gv/gview.sh', input_file])
     elif input_file.endswith('.fch'):
@@ -383,6 +436,8 @@ if __name__ == "__main__":
       call(['/home/lky/gv/gview.sh', input_file])
     elif input_file.endswith('.cdxml'):
       cdxml_visual(input_file)
+    elif input_file.endswith('.sdf'):
+      call(['/home/lky/gv/gview.sh', input_file])
     else:
       print("unrecognize input file type")
       exit(1)
