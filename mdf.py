@@ -1,3 +1,4 @@
+#!/home/lky/miniconda3/bin/python
 '''
 Calculate the Mean Distance Fluctuation (MDF) for each atom in a given
 multi-frame XYZ file.

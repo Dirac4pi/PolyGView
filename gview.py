@@ -1,12 +1,21 @@
+#!/home/lky/miniconda3/bin/python
 '''
 GaussView Laucher with support for xyz editing
 Author: Dirac4pi
 env:base
 '''
 
-from os import path, remove
+import sys
+from os import path, remove, environ
 from re import search
 from subprocess import call
+
+if sys.platform.startswith('win'):
+  exe_name = 'gview.exe'
+else:
+  exe_name = 'gview.sh'
+GV = environ.get("GV_ROOT", "/opt/gv")
+exe_path = path.join(GV, exe_name)
 
 elements = {
   'H' : 1, 'He': 2, 'Li': 3, 'Be': 4, 'B' : 5, 'C' : 6, 'N' : 7, 'O' : 8,
@@ -128,7 +137,7 @@ Converted from {xyz_file}
     f.write('\n')
   # Launch gview
   try:
-    call(['/home/lky/gv/gview.sh', gjf_file])
+    call([exe_path, gjf_file])
   except Exception as e:
     print(f"GaussView error: {e}")
     return
@@ -245,7 +254,7 @@ f'''GradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGradGrad
     f.write(footer)
   # Launch gview, but editing is not allowed.
   try:
-    call(['/home/lky/gv/gview.sh', log_file])
+    call([exe_path, log_file])
   except Exception as e:
     print(f"GaussView error: {e}")
     return
@@ -284,9 +293,13 @@ def OUT_visual(outfile:str) -> None:
       print("Unrecognize output file type.")
       exit(1)
     elif found == 'Gaussian':
-      call(['/home/lky/gv/gview.sh', outfile])
+      call([exe_path, outfile])
     elif found == 'ORCA':
-      call(['/home/lky/gv/OfakeG', outfile])  # convert ORCA output by OfakeG
+      if sys.platform.startswith('win'):
+        OfakeG_path = path.join(GV, 'OfakeG.exe')
+      else:
+        OfakeG_path = path.join(GV, 'OfakeG')
+      call([OfakeG_path, outfile])
       outfile_gau = outfile.removesuffix('.out') + "_fake.out"
       # add force on nuclears
       all_gauforces = []
@@ -340,7 +353,7 @@ def OUT_visual(outfile:str) -> None:
       with open(outfile_gau, 'w') as fo:
         fo.writelines(new_gau_lines)
       print('\nForces on nuclears have been added!')
-      call(['/home/lky/gv/gview.sh', outfile_gau])
+      call([exe_path, outfile_gau])
       remove(outfile_gau)
 
 #-------------------------------------------------------------------------------
@@ -357,9 +370,13 @@ def MOLDEN_freq_visual(MOLDEN_file:str) -> None:
     print(f"Error: File {MOLDEN_file} can not be opened.")
     exit(1)
   else:
-    call(['/home/lky/gv/MfakeG', MOLDEN_file])
+    if sys.platform.startswith('win'):
+      MfakeG_path = path.join(GV, 'MfakeG.exe')
+    else:
+      MfakeG_path = path.join(GV, 'MfakeG')
+    call([MfakeG_path, MOLDEN_file])
     outfile_gau = MOLDEN_file.removesuffix('.mol') + "_fake.out"
-    call(['/home/lky/gv/gview.sh', outfile_gau])
+    call([exe_path, outfile_gau])
     remove(outfile_gau)
 
 #-------------------------------------------------------------------------------
@@ -384,13 +401,13 @@ def cdxml_visual(cdxml_file:str) -> None:
             '--minimize',
             '--ff', 'MMFF94',
             '-h'             ])
-    call(['/home/lky/gv/gview.sh', gjf_file])
+    call([exe_path, gjf_file])
 
 #===============================================================================
 if __name__ == "__main__":
   import sys
   if len(sys.argv) == 1:
-    call(['/home/lky/gv/gview.sh'])
+    call([exe_path])
   elif len(sys.argv) != 2:
     print("Usage: gview input.[xyz|trj|gjf|log|out|cif|fch|mol]")
     exit(1)
@@ -417,27 +434,27 @@ if __name__ == "__main__":
         print("Error: No valid frames found in the xyz file.")
         exit(1)
     elif input_file.endswith('.gjf'):
-      call(['/home/lky/gv/gview.sh', input_file])
+      call([exe_path, input_file])
     elif input_file.endswith('.log'):
-      call(['/home/lky/gv/gview.sh', input_file])
+      call([exe_path, input_file])
     elif input_file.endswith('.out'):
       OUT_visual(input_file)
     elif input_file.endswith('.cif'):
-      call(['/home/lky/gv/gview.sh', input_file])
+      call([exe_path, input_file])
     elif input_file.endswith('.fch'):
-      call(['/home/lky/gv/gview.sh', input_file])
+      call([exe_path, input_file])
     elif input_file.endswith('.molden') or input_file.endswith('.molden.input'):
       MOLDEN_freq_visual(input_file)
     elif input_file.endswith('.mol') or input_file.endswith('.mol2'):
-      call(['/home/lky/gv/gview.sh', input_file])
+      call([exe_path, input_file])
     elif input_file.endswith('.pdb'):
-      call(['/home/lky/gv/gview.sh', input_file])
+      call([exe_path, input_file])
     elif input_file.endswith('.cub'):
-      call(['/home/lky/gv/gview.sh', input_file])
+      call([exe_path, input_file])
     elif input_file.endswith('.cdxml'):
       cdxml_visual(input_file)
     elif input_file.endswith('.sdf'):
-      call(['/home/lky/gv/gview.sh', input_file])
+      call([exe_path, input_file])
     else:
       print("unrecognize input file type")
       exit(1)

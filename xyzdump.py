@@ -1,3 +1,4 @@
+#!/home/lky/miniconda3/bin/python
 '''
 Extract the last frame from a multi-frame XYZ file
 Author: Dirac4pi

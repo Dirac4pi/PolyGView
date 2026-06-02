@@ -1,3 +1,4 @@
+#!/home/lky/miniconda3/bin/python
 '''
 Convert .gjf to .xyz
 Author: Dirac4pi

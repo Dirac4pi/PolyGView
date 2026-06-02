@@ -1,3 +1,4 @@
+#!/home/lky/miniconda3/bin/python
 '''
 Provide the Distance RMSD for two different conformations of the same molecule.
 Author: Dirac4pi
