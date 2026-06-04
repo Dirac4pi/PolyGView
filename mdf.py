@@ -1,9 +1,9 @@
-#!/home/lky/miniconda3/bin/python
+#!/home/lky/miniconda3/envs/polygview/bin/python
 '''
 Calculate the Mean Distance Fluctuation (MDF) for each atom in a given
 multi-frame XYZ file.
 Author: Dirac4pi
-env:base
+env:polygview
 '''
 
 import numpy as np

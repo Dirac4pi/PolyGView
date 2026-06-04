@@ -1,8 +1,8 @@
-#!/home/lky/miniconda3/bin/python
+#!/home/lky/miniconda3/envs/polygview/bin/python
 '''
 Convert .gjf to .xyz
 Author: Dirac4pi
-env:base
+env:polygview
 '''
 
 #-------------------------------------------------------------------------------

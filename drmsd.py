@@ -1,8 +1,8 @@
-#!/home/lky/miniconda3/bin/python
+#!/home/lky/miniconda3/envs/polygview/bin/python
 '''
 Provide the Distance RMSD for two different conformations of the same molecule.
 Author: Dirac4pi
-env:base
+env:polygview
 '''
 
 import sys

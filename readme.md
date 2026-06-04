@@ -22,11 +22,11 @@ export GAUSS_SCRDIR='/opt/g16/scratch'
 export GV_ROOT='/path/to/gv'
 ```
 
-&nbsp;&nbsp;&nbsp;&nbsp;You need to create an environment and include NumPy
-within it. If you are working on a Linux machine, it is recommended that you
+&nbsp;&nbsp;&nbsp;&nbsp;You need to create an environment with `NumPy` and
+`RDkit`. If you are working with a Linux machine, it is recommended that you
 grant all scripts executable permissions and replace the shebangs in all the
-scripts with the path to the Python interpreter for the environment, it will
-enable you to use scripts in any environments.
+scripts with the path to the Python interpreter of the environment, it will
+enable you to use scripts in any scenario.
 
 ## gview.py
 
@@ -75,10 +75,12 @@ call it to visualize vibration modes in CP2K MOLDEN format files.
 
 ### 5. Modeling Based on ChemDraw 2D Structures
 
-&nbsp;&nbsp;&nbsp;&nbsp;If you have install
-[Obabel 2.4.x](https://github.com/openbabel/openbabel/releases) and add it to
-`$PATH`, gview.py can invoke it to model 3D structures based on ChemDraw .cdxml
-files, it's the simplest method for converting 2D models into 3D models.
+&nbsp;&nbsp;&nbsp;&nbsp;RDKit can accurately and rapidly convert ChemDraw 2D
+structures into 3D structures; it supports hydrogen addition and molecular force
+field optimization, and—most critically—it is capable of distinguishing between
+stereoconfigurations. gview.py can invoke it to model 3D structures based on
+.cdxml files, it's the most powerful and straightforward method for converting
+2D models into 3D models.
 
 ## gjf2xyz.py
 
