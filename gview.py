@@ -8,7 +8,7 @@ env:polygview
 import sys
 from os import path, remove, environ
 from re import search
-from subprocess import call
+from subprocess import call, run, PIPE
 
 if sys.platform.startswith('win'):
   exe_name = 'gview.exe'
@@ -107,6 +107,7 @@ def single_xyz_edit(xyz_file:str) -> None:
   :xyz_file: input file name\n
   return: None
   '''
+  import time
   Natom, title, coord, fcoords = load_xyz(xyz_file, 1)
   # Generate .gjf (coordinates only)
   gjf_file = path.splitext(xyz_file)[0] + "_fromxyz.gjf"
@@ -136,6 +137,25 @@ Converted from {xyz_file}
               lattice_data[8]+'\n')
     f.write('\n')
   # Launch gview
+  while True:
+    # ensure that no gview running when editing an XYZ file
+    if sys.platform.startswith('win'):
+      check_process = run(
+          ['tasklist', '/FI', f'IMAGENAME eq gview.exe', '/NH'], 
+          stdout=PIPE,text=True
+      )
+      if not 'gview.exe' in check_process.stdout.lower():
+        break
+    else:
+      check_process = run(['pgrep', '-f', 'gview.exe'], stdout=PIPE)
+      if not check_process.stdout:
+        break
+    print(f"\nGView seems running, it will trigger Inter-Process-Communication"\
+          +" (IPC) issues •_•")
+    print(f"Please SAVE AND CLOSE all the GView process to proceed!")
+    input("Press ENTER after they're closed ...")
+    time.sleep(0.2) # time buffer to close gview
+  print(f"calling gview ...")
   try:
     call([exe_path, gjf_file])
   except Exception as e:
