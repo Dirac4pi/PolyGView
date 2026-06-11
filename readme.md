@@ -5,7 +5,7 @@ computational chemistry workflows, and GaussView (GView) excels in these areas.
 However, due to its status as commercial software, GView’s applications are
 limited. PolyGView is a collection of Python scripts that extends GView’s
 capabilities, ensuring users can perform modeling and result-visualization in
-the simplest and most powerful way possible.<br>
+the easiest and most powerful way possible.<br>
 &nbsp;&nbsp;&nbsp;&nbsp;PolyGView is available on Windows, Linux and macOS, but
 some configuration is required. Taking Linux as example, add the following to
 `~/.bashrc`:
@@ -92,6 +92,13 @@ stereoconfigurations. gview.py can invoke it to model 3D structures based on
 
 &nbsp;&nbsp;&nbsp;&nbsp;Convert GJF files to XYZ files, supporting isolated and
 periodic systems. Usage: `gjf2xyz.py input.gjf`.<br>
+
+## gjf2inp.py
+
+&nbsp;&nbsp;&nbsp;&nbsp;Convert GJF files to ORCA INP files. An .inp file (for
+setting up the calculation) and an .xyz file (for saving the geometry) will be
+generated, facilitating project management and workflow construction.
+Usage: `gjf2inp.py input.gjf`.<br>
 
 ## xyzdump.py
 

@@ -43,7 +43,7 @@ def iscood(line:str) -> bool:
 #-------------------------------------------------------------------------------
 def gjf2xyz(gjf:str) -> None:
   '''
-  Convert gjf to xyz
+  Convert gjf files to xyz siles
   --
   :gjf: gjf file to be converted.
   '''
@@ -89,4 +89,10 @@ def gjf2xyz(gjf:str) -> None:
 #===============================================================================
 if __name__ == "__main__":
   import sys
-  gjf2xyz(*sys.argv[1:])
+  arguments = sys.argv[1:]
+  if not arguments:
+    print("NO arguments provided!")
+    print("usage: gjf2xyz.py file1.gjf file2.gjf file3.gjf ...")
+    sys.exit(1)
+  for arg in arguments:
+    gjf2xyz(arg)

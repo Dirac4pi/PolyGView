@@ -627,7 +627,19 @@ if __name__ == "__main__":
       call([exe_path, input_file])
     elif input_file.endswith('.pdb'):
       call([exe_path, input_file])
-    elif input_file.endswith('.cub'):
+    elif input_file.endswith('.pdb1'):
+      call([exe_path, input_file])
+    elif input_file.endswith('.ml2'):
+      call([exe_path, input_file])
+    elif input_file.endswith('.gmmx'):
+      call([exe_path, input_file])
+    elif input_file.endswith('.com'):
+      call([exe_path, input_file])
+    elif input_file.endswith('.cub') or input_file.endswith('.cube'):
+      print("It's NOT recommended to use GView to open cube files; using VMD"+\
+            " or vis2c for visualization instead.")
+      if input_file.endswith('.cube'):
+        exit(1)
       call([exe_path, input_file])
     elif input_file.endswith('.cdxml'):
       cdxml_visual_rdkit(input_file, output_format='xyz', optimize=True)
