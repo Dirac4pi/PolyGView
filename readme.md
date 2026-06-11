@@ -56,7 +56,13 @@ potential surfaces, etc.<br>
 trajectory files lies in the fact that **it is applicable to any program, at any
 computational level, and for any keyword-based task.**
 
-### 3. Visualization of ORCA Output Files
+### 3. Edit of ORCA Input Files
+
+&nbsp;&nbsp;&nbsp;&nbsp;You may be accustomed to saving coordinates directly
+into ORCA input files; gview.py supports the direct visualization and editing
+of ORCA `.inp` files, just as it does for `.gjf/xyz` files.
+
+### 4. Visualization of ORCA Output Files
 
 &nbsp;&nbsp;&nbsp;&nbsp;If you have install
 [OfakeG](http://sobereva.com/soft/OfakeG/) in GView directory, gview.py can
@@ -67,13 +73,13 @@ working on ORCA geometric optimization tasks, etc. It can be visualized under
 &nbsp;&nbsp;&nbsp;&nbsp;gview.py automatically recognizes Gaussian/ORCA output
 files.
 
-### 4. Visualization of CP2K MOLDEN Files
+### 5. Visualization of CP2K MOLDEN Files
 
 &nbsp;&nbsp;&nbsp;&nbsp;If you have install
 [MfakeG](http://sobereva.com/soft/MfakeG/) in GView directory, gview.py can
 call it to visualize vibration modes in CP2K MOLDEN format files.
 
-### 5. Modeling Based on ChemDraw 2D Structures
+### 6. Modeling Based on ChemDraw 2D Structures
 
 &nbsp;&nbsp;&nbsp;&nbsp;RDKit can accurately and rapidly convert ChemDraw 2D
 structures into 3D structures; it supports hydrogen addition and molecular force

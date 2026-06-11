@@ -187,6 +187,64 @@ Converted from {xyz_file}
   print(f"Edited structure saved to {edited_xyz}")
 
 #-------------------------------------------------------------------------------
+def visual_orca_inp(inp_file: str) -> None:
+  """
+  Visualise and edit ORCA input file via GaussView
+  --
+  inp_file (str): Path to the original ORCA input file.\n
+  return: None
+  """
+  import time
+  header_lines = []
+  atoms = []
+  footer_lines = []
+  in_coord_block = False
+  coord_block_finished = False
+  with open(inp_file, 'r') as f_inp:
+    for line in f_inp:
+      clean_line = line.strip()
+      # Extract everything before and including the '* xyz [C] [M]' line
+      if not in_coord_block and not coord_block_finished:
+        header_lines.append(line)
+        if clean_line.lower().startswith("* xyz"):
+          if clean_line.lower().startswith("* xyzfile"):
+            print("this ORCA input file has external coordinate reference")
+            exit(1)
+          in_coord_block = True
+      elif in_coord_block:
+        if clean_line == "*":
+          in_coord_block = False
+          coord_block_finished = True
+        elif clean_line:
+          atoms.append(clean_line)
+      elif coord_block_finished:
+        footer_lines.append(line)
+  xyz_file = path.splitext(inp_file)[0] + "_frominp.xyz"
+  with open(xyz_file, 'w') as f_xyz:
+    f_xyz.write(f"{len(atoms)}\n")
+    f_xyz.write(f"Extracted from {inp_file}\n")
+    for atom in atoms:
+      f_xyz.write(f"{atom}\n")
+  single_xyz_edit(xyz_file)
+  time.sleep(1.0) # time buffer to ensure the edited xyz is saved
+  modified_atoms = []
+  with open(xyz_file, 'r') as f_xyz_out:
+    lines = f_xyz_out.readlines()
+    if len(lines) >= 3:
+      num_atoms = int(lines[0].strip())
+      modified_atoms = [l.strip() for l in lines[2:2 + num_atoms]]
+  with open(inp_file, 'w') as f_out:
+    for h_line in header_lines:
+      f_out.write(h_line)
+    for modified_atom in modified_atoms:
+      f_out.write(f"  {modified_atom}\n")
+    f_out.write("*\n")
+    for f_line in footer_lines:
+      f_out.write(f_line)
+  if path.exists(xyz_file): remove(xyz_file)
+  print(f"Updated {inp_file} saved")
+
+#-------------------------------------------------------------------------------
 def log_geom(xyz_coords:str):
   '''
   Docstring for log_geom
@@ -527,7 +585,7 @@ if __name__ == "__main__":
   if len(sys.argv) == 1:
     call([exe_path])
   elif len(sys.argv) != 2:
-    print("Usage: gview input.[xyz|trj|gjf|log|out|cif|fch|mol]")
+    print("Usage: gview input.[xyz|inp|trj|gjf|log|out|cif|fch|mol]")
     exit(1)
   else:
     input_file = sys.argv[1]
@@ -551,6 +609,8 @@ if __name__ == "__main__":
       else:
         print("Error: No valid frames found in the xyz file.")
         exit(1)
+    elif input_file.endswith('.inp'):
+      visual_orca_inp(input_file)
     elif input_file.endswith('.gjf'):
       call([exe_path, input_file])
     elif input_file.endswith('.log'):
