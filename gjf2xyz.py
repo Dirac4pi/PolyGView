@@ -66,7 +66,7 @@ def gjf2xyz(gjf:str) -> None:
           i = line.find('(')
           if i != -1:
             j = line.find(')')
-            line = line[0:i]+line[j+1:-1]
+            line = line[0:i]+line[j+1:]
           cood.append(line)
           natom += 1
     if lattice == []:

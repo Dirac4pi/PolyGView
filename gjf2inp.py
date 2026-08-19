@@ -8,19 +8,19 @@ env:polygview
 from gjf2xyz import gjf2xyz
 from pathlib import Path
 
-def is_two_integers(s: str) -> bool:
+def is_charge_spin_line(s: str) -> bool:
   """
-  Determine whether the string is 2 integers separated by a single space or not
+  Determine whether the string consists entirely of integers (at least 2)
   --
   :line: input string\n
   return: true/false
   """
   parts = s.split()
-  if len(parts) != 2:
+  if len(parts) < 2:
     return False
   try:
-    int(parts[0])
-    int(parts[1])
+    for part in parts:
+      int(part)
   except ValueError:
     return False
   else:
@@ -38,7 +38,7 @@ def gjf2inp(gjf:str) -> None:
   with open(gjf, 'r', encoding='utf-8') as rgjf:
     for line in rgjf:
       s = line.split()
-      if is_two_integers(line):
+      if is_charge_spin_line(line):
         charge = int(s[0])
         spin = int(s[1])
         csfound = True
