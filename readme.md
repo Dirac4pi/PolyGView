@@ -22,11 +22,12 @@ export GAUSS_SCRDIR='/opt/g16/scratch'
 export GV_ROOT='/path/to/gv'
 ```
 
-&nbsp;&nbsp;&nbsp;&nbsp;You need to create an environment with `NumPy` and
-`RDkit`. If you are working with a Linux machine, it is recommended that you
-grant all scripts executable permissions and replace the shebangs in all the
-scripts with the path to the Python interpreter of the environment, it will
-enable you to use scripts in any scenario.
+&nbsp;&nbsp;&nbsp;&nbsp;You need to create an environment with `NumPy`,
+`RDKit` and `QCElemental` (for covalent radii in `drmsd.py`). If you are working
+with a Linux machine, it is recommended that you grant all scripts executable
+permissions and replace the shebangs in all the scripts with the path to the
+Python interpreter of the environment, it will enable you to use scripts in any
+scenario.
 
 ## gview.py
 
@@ -93,6 +94,17 @@ stereoconfigurations. gview.py can invoke it to model 3D structures based on
 &nbsp;&nbsp;&nbsp;&nbsp;Convert GJF files to XYZ files, supporting isolated and
 periodic systems. Usage: `gjf2xyz.py input.gjf`.<br>
 
+## log2xyz.py
+
+&nbsp;&nbsp;&nbsp;&nbsp;Extract a selected geometry from a Gaussian optimization
+log as a single-frame XYZ file, preserving atom order and Angstrom coordinates.
+Usage: `log2xyz.py abc.log -12` exports forward-counted frame 12 to
+`12_abc.xyz` in the current directory; `-12` does not mean counting backward.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Frame numbering uses one orientation convention within
+the selected job (Standard orientation preferred), retaining the final printed
+optimization geometry while excluding subsequent frequency jobs. The XYZ comment
+records the source job, frame and log line for traceability.<br>
+
 ## gjf2inp.py
 
 &nbsp;&nbsp;&nbsp;&nbsp;Convert GJF files to ORCA INP files. An .inp file (for
@@ -109,11 +121,28 @@ will export a single-frame XYZ file containing cell information. Usage:
 
 ## drmsd.py
 
-&nbsp;&nbsp;&nbsp;&nbsp;Calculate the Distance MAXD (dMAXD) and Distance RMSD
-(dRMSD) between two specified conformers of the same molecule (provided via two
-XYZ files), which is used to discrabe the differences between the two conformers.
-dRMSD is dimensionally consistent and remains invariant under translational and
-rotational transformations. Usage: `drmsd.py conf1.xyz conf2.xyz`.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Compare two XYZ conformers or corresponding molecular
+fragments without spatial alignment: report dRMSD/dMAXD and rank the ten largest
+changes in each of bond lengths, bond angles and dihedrals. This combines an
+overall deformation measure with a direct answer to **which internal coordinates
+changed most**. Usage: `drmsd.py ref.xyz probe.xyz`. Select REF and PROBE atoms
+interactively using 1-based numbers/ranges (e.g. `1-9,16-23,25`); enter `C/c` to
+select an entire molecule.Corresponding elements must match; hydrogens are
+included.<br>
+&nbsp;&nbsp;&nbsp;&nbsp;Connectivity follows the reference geometry, keeping
+this topology fixed avoids losing stretched bonds from the comparison;
+connections that fail the same criterion in PROBE are flagged. Dihedrals cover
+both bonded chains and three-neighbor centers (so called coordination), with
+equivalent coordination plane pairs deduplicated before ranking. Periodic angle
+differences avoid artificial 360-degree jumps, and near-collinear dihedrals are
+excluded.<br>
+
+```shell
+drmsd.py ref.xyz probe.xyz [--ref-atoms "1-9,25"] [--probe-atoms "3-11,29"] [--csv-prefix compare]
+```
+
+The distance metrics are invariant under translation and rotation, where
+N is the number of paired selected atoms:
 
 $$
 \begin{aligned}
