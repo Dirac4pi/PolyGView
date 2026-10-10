@@ -209,6 +209,210 @@ def compare_internal(a, b, symbols, ref_ids, probe_ids, bonds, probe_bonds, line
   return ranked, excluded
 
 #------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+def impact_branch(neighbors, fixed, moving):
+  """Return the moving component after cutting one edge, or None for a cycle."""
+  if moving not in neighbors[fixed]:
+    return None
+  seen, stack = {moving}, [moving]
+  while stack:
+    atom = stack.pop()
+    for nxt in neighbors[atom]:
+      if (atom == fixed and nxt == moving) or (atom == moving and nxt == fixed):
+        continue
+      if nxt not in seen:
+        seen.add(nxt)
+        stack.append(nxt)
+  return None if fixed in seen else tuple(sorted(seen))
+
+
+def impact_rotation(coords, moving, origin, axis, angle_deg):
+  """Apply a rigid Rodrigues rotation to one covalently connected branch."""
+  axis = np.asarray(axis, dtype=float)
+  norm = np.linalg.norm(axis)
+  if norm <= 1e-12:
+    raise ValueError('Zero-length rotation axis')
+  unit = axis/norm
+  angle = np.radians(angle_deg)
+  cosine, sine = np.cos(angle), np.sin(angle)
+  result = np.array(coords, copy=True)
+  indices = list(moving)
+  vectors = result[indices] - origin
+  result[indices] = origin + vectors*cosine + np.cross(unit, vectors)*sine + (
+    vectors@unit)[:,None]*unit*(1-cosine)
+  return result
+
+
+def single_coordinate_geometry(coords, kind, atoms, target, neighbors, linear_tol=1e-3):
+  """Drive one coordinate with explicit branch rules, allowing coupled changes.
+
+  Bond: translate one side of a bridge along the bond.
+  Angle: rotate a detachable terminal branch about the angle-plane normal.
+  Chain dihedral: prefer rotation about a bridge central bond.
+  Other dihedrals: rotate a detachable A/D branch about the B-C axis.
+  Candidates are ordered by branch size then atom indices, never by impact score.
+  Cyclic/multiply anchored branches are not broken or artificially distorted.
+  """
+  coords = np.asarray(coords, dtype=float)
+  current = coordinate_value(coords, atoms, kind, linear_tol)
+  change = target-current
+  if kind == 'dihedral':
+    change = (change+180.)%360.-180.
+  if abs(change) <= (1e-10 if kind == 'bond' else 1e-8):
+    return np.array(coords,copy=True), dict(method='zero_change',moved_atoms=0,reason='')
+  candidates = []
+  if kind == 'bond':
+    i,j = atoms
+    direction = coords[j]-coords[i]
+    length = np.linalg.norm(direction)
+    if length <= 1e-12 or target <= 1e-12:
+      return None, dict(method='',moved_atoms=0,reason='zero/nonpositive bond length')
+    for fixed,moving,sign in ((i,j,1.),(j,i,-1.)):
+      branch = impact_branch(neighbors,fixed,moving)
+      if branch is not None:
+        result = np.array(coords,copy=True)
+        result[list(branch)] += sign*change*direction/length
+        candidates.append((branch,result,'bridge_bond_translation'))
+  elif kind == 'angle':
+    i,j,k = atoms
+    if not 0 < target < 180:
+      return None, dict(method='',moved_atoms=0,reason='target angle is linear/degenerate')
+    first,last = coords[i]-coords[j],coords[k]-coords[j]
+    axis = np.cross(first,last)
+    if np.linalg.norm(axis) <= 1e-8*np.linalg.norm(first)*np.linalg.norm(last):
+      return None, dict(method='',moved_atoms=0,reason='undefined angle-plane rotation axis')
+    for terminal,other,sign in ((k,i,1.),(i,k,-1.)):
+      branch = impact_branch(neighbors,j,terminal)
+      if branch is not None and other not in branch:
+        result = impact_rotation(coords,branch,coords[j],axis,sign*change)
+        candidates.append((branch,result,'angle_branch_rotation'))
+  else:
+    i,j,k,l = atoms
+    axis = coords[k]-coords[j]
+    # A true central bridge gives a conventional torsional branch rotation.
+    is_chain = i in neighbors[j] and k in neighbors[j] and l in neighbors[k]
+    if is_chain:
+      for fixed,moving,sign,anchor in ((j,k,1.,l),(k,j,-1.,i)):
+        branch = impact_branch(neighbors,fixed,moving)
+        if branch is not None and anchor in branch:
+          result = impact_rotation(coords,branch,coords[j],axis,sign*change)
+          candidates.append((branch,result,'central_bridge_torsion'))
+    # A/D branch rotation also covers the two coordination definitions.
+    # Use it only when no conventional central-bridge candidate is available.
+    if not candidates:
+      for terminal,other,sign in ((l,i,1.),(i,l,-1.)):
+        for pivot in (j,k):
+          branch = impact_branch(neighbors,pivot,terminal)
+          if branch is None or any(x in branch for x in (j,k,other)):
+            continue
+          result = impact_rotation(coords,branch,coords[j],axis,sign*change)
+          candidates.append((branch,result,'terminal_branch_dihedral_rotation'))
+  if not candidates:
+    return None, dict(method='',moved_atoms=0,
+      reason='no detachable branch under full REF topology (cycle or multiple attachment)')
+  candidates.sort(key=lambda item:(len(item[0]),item[0],item[2]))
+  for branch,result,method in candidates:
+    try:
+      achieved = coordinate_value(result,atoms,kind,linear_tol)
+    except ValueError:
+      continue
+    error = achieved-target
+    if kind == 'dihedral':
+      error = (error+180.)%360.-180.
+    if abs(error) <= (1e-7 if kind == 'bond' else 1e-5):
+      moved = int(np.sum(np.linalg.norm(result-coords,axis=1)>1e-10))
+      return result, dict(method=method,moved_atoms=moved,reason='')
+  return None, dict(method='',moved_atoms=0,reason='target coordinate could not be verified')
+
+
+def add_internal_coordinate_impacts(ranked, full_ref_coords, full_ref_bonds, selected_ref_ids,
+  linear_tol=1e-3):
+  """Attach geometry-impact proxies; metrics use the same selected atom pairs.
+
+  Branch membership uses the full REF molecule, so an omitted part of a ring
+  cannot masquerade as an open chain. No force-field or energy minimization is
+  performed. Values are nonadditive and do not prove movement toward PROBE.
+  """
+  neighbors = interaction_neighbors(len(full_ref_coords),full_ref_bonds)
+  selected = np.asarray(selected_ref_ids,dtype=int)-1
+  ref = full_ref_coords[selected]
+  ii,jj = np.triu_indices(len(ref),1)
+  reference_distances = np.linalg.norm(ref[ii]-ref[jj],axis=1)
+  for kind,rows in ranked.items():
+    for row in rows:
+      row['IC_impact_dRMSD_A'] = ''
+      row['IC_impact_status'] = 'unavailable'
+      row['IC_impact_method'] = ''
+      row['IC_impact_moved_atoms_full'] = 0
+      row['IC_impact_reason'] = ''
+      atoms = tuple(int(x)-1 for x in row['ref_atoms'].split('-'))
+      try:
+        perturbed,details = single_coordinate_geometry(full_ref_coords,kind,atoms,
+          row['probe_value'],neighbors,linear_tol)
+      except (ValueError,FloatingPointError) as exc:
+        row['IC_impact_reason'] = str(exc)
+        continue
+      row['IC_impact_method'] = details['method']
+      row['IC_impact_moved_atoms_full'] = details['moved_atoms']
+      row['IC_impact_reason'] = details['reason']
+      if perturbed is None:
+        continue
+      changed = perturbed[selected]
+      distances = np.linalg.norm(changed[ii]-changed[jj],axis=1)
+      impact = float(np.sqrt(np.mean((distances-reference_distances)**2))) if len(ii) else 0.
+      row['IC_impact_dRMSD_A'] = impact
+      row['IC_impact_status'] = 'ok'
+  return ranked
+
+
+#------------------------------------------------------------------------------
+def annotate_internal_cliffs(ranked, drop_percent=30., global_gap_percent=1.,
+  bond_gap=0.001, angle_gap=0.1, enabled=True):
+  """Annotate adjacent |delta| cliffs in each complete sorted category.
+
+  Defaults require a 30% relative drop plus peak-relative and dimensional gap
+  floors. These are configurable display heuristics, not significance tests.
+  The boundary follows the annotated row. Stars retain the existing scale:
+  * below 75%, ** from 75% to below 90%, *** from 90% upward.
+  """
+  for kind,rows in ranked.items():
+    if not rows:
+      continue
+    values = np.asarray([row['abs_delta'] for row in rows],dtype=float)
+    if not np.all(np.isfinite(values)) or np.any(values < 0) or np.any(np.diff(values) > 0):
+      raise ValueError('Cliff detection requires finite, nonnegative, descending |delta| values')
+    peak = float(values[0])
+    gap_floor = bond_gap if kind == 'bond' else angle_gap
+    for index,row in enumerate(rows):
+      row.update(cliff_after=False,cliff_drop_percent='',cliff_ratio='',cliff_gap='',
+        cliff_gap_percent_of_max='',cliff_level='')
+      if index == len(rows)-1:
+        continue
+      upper,lower = float(values[index]),float(values[index+1])
+      gap = upper-lower
+      drop = 100.*gap/upper if upper > 0 else 0.
+      global_gap = 100.*gap/peak if peak > 0 else 0.
+      ratio = upper/lower if lower > 0 else ('inf' if upper > 0 else '')
+      row.update(cliff_drop_percent=drop,cliff_ratio=ratio,cliff_gap=gap,
+        cliff_gap_percent_of_max=global_gap)
+      if (enabled and gap > 0 and drop+1e-10 >= drop_percent
+        and global_gap+1e-10 >= global_gap_percent and gap+1e-12 >= gap_floor):
+        row['cliff_after'] = True
+        row['cliff_level'] = '***' if drop+1e-10 >= 90. else '**' if drop+1e-10 >= 75. else '*'
+  return ranked
+
+
+def format_internal_cliff(row, rank, next_row):
+  """Render a separator without affecting the table column layout."""
+  ratio = row['cliff_ratio']
+  ratio_text = 'inf' if ratio == 'inf' else f'{ratio:.3g}'
+  unit = 'A' if row['kind'] == 'bond' else 'deg'
+  return (f"--- |delta| CLIFF {row['cliff_level']}  rank {rank}->{rank+1}: "
+    f"{row['abs_delta']:.6f}->{next_row['abs_delta']:.6f} {unit}; "
+    f"drop={row['cliff_drop_percent']:.1f}%, factor={ratio_text}x, "
+    f"gap={row['cliff_gap']:.6f} {unit} ---")
+
+
 def write_csv(filename, rows, fields):
   with open(filename, 'w', newline='', encoding='utf-8') as f:
     writer = csv.DictWriter(f, fieldnames=fields)
@@ -1234,6 +1438,16 @@ def main(argv=None):
   parser.add_argument('--probe-atoms', help='Paired in the exact order of REF selection')
   parser.add_argument('--all', action='store_true', help='Compare all atoms in file order without prompts')
   parser.add_argument('--top', type=int, default=10)
+  parser.add_argument('--cliff-drop-percent',type=float,default=30.,
+    help='Minimum adjacent |delta| drop percent for a cliff (default: 30)')
+  parser.add_argument('--cliff-global-gap-percent',type=float,default=1.,
+    help='Minimum gap as percent of the category maximum |delta| (default: 1)')
+  parser.add_argument('--cliff-bond-gap',type=float,default=0.001,
+    help='Minimum absolute bond-change gap in Angstrom (default: 0.001)')
+  parser.add_argument('--cliff-angle-gap',type=float,default=0.1,
+    help='Minimum absolute angle/dihedral-change gap in degrees (default: 0.1)')
+  parser.add_argument('--no-cliffs',action='store_true',help='Disable |delta| cliff markers')
+
   parser.add_argument('--csv-prefix', help='Write PREFIX_all.csv, PREFIX_top.csv, PREFIX_excluded.csv')
   parser.add_argument('--linear-tol', type=float, default=1e-3, help='Minimum sine of either dihedral adjacent angle')
   parser.add_argument('--hb-da', type=float, default=3.0,
@@ -1275,6 +1489,13 @@ def main(argv=None):
   parser.add_argument('--whole-thresholds',default='0.02,0.10,0.25',
     help='Three increasing dRMSD/mean-Rg reporting cutoffs')
   args = parser.parse_args(argv)
+  if not np.isfinite(args.cliff_drop_percent) or not 0 < args.cliff_drop_percent <= 100:
+    parser.error('--cliff-drop-percent must lie in (0, 100]')
+  if not np.isfinite(args.cliff_global_gap_percent) or not 0 <= args.cliff_global_gap_percent <= 100:
+    parser.error('--cliff-global-gap-percent must lie in [0, 100]')
+  if any(not np.isfinite(value) or value < 0 for value in (args.cliff_bond_gap,args.cliff_angle_gap)):
+    parser.error('--cliff-bond-gap and --cliff-angle-gap must be finite and nonnegative')
+
   try:
     args.whole_thresholds=tuple(float(x.strip()) for x in args.whole_thresholds.split(','))
   except ValueError:
@@ -1376,21 +1597,46 @@ def main(argv=None):
     advanced_report(sa, ca, sb, cb, ra, pb, infer_bonds(ca, ref_radii),
       infer_bonds(cb, probe_radii), args)
   ranked, excluded = compare_internal(a,b,symbols,ra,pb,bonds,probe_bonds,args.linear_tol)
+  add_internal_coordinate_impacts(ranked,ca,infer_bonds(ca,ref_radii),ra,args.linear_tol)
+  annotate_internal_cliffs(ranked,args.cliff_drop_percent,args.cliff_global_gap_percent,
+    args.cliff_bond_gap,args.cliff_angle_gap,not args.no_cliffs)
   all_rows, top_rows = [], []
   print('\n============================INTERNAL_COORD================================')
+  print('IC_impact_dRMSD(A): single-coordinate-driven geometric impact, allowing necessary coupled changes.')
+  print('Target is the PROBE coordinate; impact = dRMSD(REF, driven REF), evaluated on the selected atoms.')
+  print('This reflects potential geometric contribution/importance in REF->PROBE, NOT additive attribution or a percentage.')
+  print('It measures perturbation magnitude, not whether that perturbation actually moves the structure toward PROBE.')
+  print('Full REF topology defines rigid branches; deterministic smaller-branch rule; no energy/steric relaxation.')
+  print('N/A means this branch model cannot construct a verified perturbation; it does not mean zero importance.')
+  if not args.no_cliffs:
+    print(f'|delta| cliffs: adjacent drop >= {args.cliff_drop_percent:g}%; gap >= {args.cliff_global_gap_percent:g}% of category maximum;')
+    print(f'  gap floor: bond {args.cliff_bond_gap:g} A, angle/dihedral {args.cliff_angle_gap:g} deg. All three conditions are required.')
+    print('  Stars: * drop <75%, ** 75-<90%, *** >=90%. Display heuristics, NOT statistical/chemical significance.')
+    print('  Detection uses each full sorted list; separators are shown only between two displayed rows.')
+
+
 
   for kind, rows in ranked.items():
     if kind.upper() == 'BOND':
       print(f'{kind.upper()}: top {min(args.top,len(rows))} / {len(rows)} valid')
     else:
       print(f'\n{kind.upper()}: top {min(args.top,len(rows))} / {len(rows)} valid')
-    print('Rank  REF atoms         PROBE atoms       Elements       REF value    PROBE value    Delta    |delta|   bonds     Type')
+    print(f"{'Rank':>4s}  {'REF atoms':<17s} {'PROBE atoms':<17s} {'Elements':<12s} {'REF value':>11s} {'PROBE value':>13s} {'Delta':>10s} {'|delta|':>10s} {'bonds':<6s} {'Type':<14s} {'IC_impact_dRMSD(A)':<18s}")
     for rank,row in enumerate(rows,1):
       record = dict(rank=rank, **row)
       all_rows.append(record)
       if rank <= args.top:
         top_rows.append(record)
-        print(f"{rank:4d}  {row['ref_atoms']:17s} {row['probe_atoms']:17s} {row['elements']:12s} {row['ref_value']:11.6f} {row['probe_value']:13.6f} {row['delta']:10.6f} {row['abs_delta']:10.6f} {'  OK  ' if row['probe_bonds_ok'] else 'WARN  '} {row['dihedral_type'] or '     -'}")
+        impact=row['IC_impact_dRMSD_A']
+        impact_text=f'{impact:.6f}' if isinstance(impact,float) else 'N/A'
+        print(f"{rank:4d}  {row['ref_atoms']:17s} {row['probe_atoms']:17s} {row['elements']:12s} {row['ref_value']:11.6f} {row['probe_value']:13.6f} {row['delta']:10.6f} {row['abs_delta']:10.6f} {('OK' if row['probe_bonds_ok'] else 'WARN'):<6s} {(row['dihedral_type'] or '-'):<14s} {impact_text:<18s}")
+        if row['cliff_after'] and rank < min(args.top,len(rows)):
+          print(format_internal_cliff(row,rank,rows[rank]))
+  unavailable=[row for rows in ranked.values() for row in rows[:args.top] if row['IC_impact_status']!='ok']
+  if unavailable:
+    print('\nUnavailable single-coordinate impacts among printed rows:')
+    for row in unavailable:
+      print(f"  {row['kind']} REF {row['ref_atoms']}: {row['IC_impact_reason']}")
   print(f'\nExcluded coordinates: {len(excluded)}')
   for row in excluded:
     print(f"  {row['kind']} REF {row['ref_atoms']} / PROBE {row['probe_atoms']}: {row['reason']} (type={row['dihedral_type'] or '-'})")
@@ -1398,7 +1644,9 @@ def main(argv=None):
   if whole_selected and not args.skip_whole:
     whole_molecule_report(symbols,a,b,ra,pb,bonds,probe_bonds,args)
   if args.csv_prefix:
-    fields = ['rank','kind','dihedral_type','ref_atoms','probe_atoms','elements','unit','ref_value','probe_value','delta','abs_delta','probe_bonds_ok']
+    fields = ['rank','kind','dihedral_type','ref_atoms','probe_atoms','elements','unit','ref_value','probe_value','delta','abs_delta','probe_bonds_ok',
+      'IC_impact_dRMSD_A','IC_impact_status','IC_impact_method','IC_impact_moved_atoms_full','IC_impact_reason',
+      'cliff_after','cliff_drop_percent','cliff_ratio','cliff_gap','cliff_gap_percent_of_max','cliff_level']
     write_csv(args.csv_prefix+'_covalent_changes.csv', covalent_changes,
       ['ref_atoms', 'probe_atoms', 'elements', 'ref_distance_A', 'probe_distance_A',
         'ref_bonded', 'probe_bonded', 'status'])
