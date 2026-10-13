@@ -326,7 +326,7 @@ def single_coordinate_geometry(coords, kind, atoms, target, neighbors, linear_to
 
 
 def add_internal_coordinate_impacts(ranked, full_ref_coords, full_ref_bonds, selected_ref_ids,
-  linear_tol=1e-3):
+  linear_tol=1e-3, response_analysis=None):
   """Attach geometry-impact proxies; metrics use the same selected atom pairs.
 
   Branch membership uses the full REF molecule, so an omitted part of a ring
@@ -357,6 +357,8 @@ def add_internal_coordinate_impacts(ranked, full_ref_coords, full_ref_bonds, sel
       row['IC_impact_reason'] = details['reason']
       if perturbed is None:
         continue
+      if response_analysis is not None:
+        collect_ic_response(response_analysis,kind,row,perturbed,linear_tol)
       changed = perturbed[selected]
       distances = np.linalg.norm(changed[ii]-changed[jj],axis=1)
       impact = float(np.sqrt(np.mean((distances-reference_distances)**2))) if len(ii) else 0.
@@ -366,6 +368,186 @@ def add_internal_coordinate_impacts(ranked, full_ref_coords, full_ref_bonds, sel
 
 
 #------------------------------------------------------------------------------
+#------------------------------------------------------------------------------
+def prepare_ic_response(ranked, top=10, show=20, min_ratio=0.2,
+  bond_floor=0.001, angle_floor=0.1):
+  """Choose each category's top changes without mixing units or replacing N/A."""
+  candidates = []
+  for kind,prefix in (('bond','B'),('angle','A'),('dihedral','D')):
+    for rank,row in enumerate(ranked.get(kind,[])[:top],1):
+      candidates.append(dict(id=f'{prefix}{rank}',rank=rank,kind=kind,row=row,
+        atoms=tuple(int(x)-1 for x in row['ref_atoms'].split('-'))))
+  return dict(candidates=candidates,
+    by_key={(item['kind'],item['row']['ref_atoms']):item for item in candidates},
+    records=[],processed=set(),top=top,show=show,min_ratio=min_ratio,
+    bond_floor=bond_floor,angle_floor=angle_floor,finalized=False)
+
+
+def ic_response_record(driver,target):
+  """Store raw values, identifiers and model provenance for one directed pair."""
+  a,b = driver['row'],target['row']
+  return dict(driver_id=driver['id'],response_id=target['id'],driver_kind=driver['kind'],
+    response_kind=target['kind'],driver_ref_atoms=a['ref_atoms'],driver_probe_atoms=a['probe_atoms'],
+    response_ref_atoms=b['ref_atoms'],response_probe_atoms=b['probe_atoms'],
+    driver_delta=a['delta'],driver_unit=a['unit'],actual_delta=b['delta'],response_unit=b['unit'],
+    induced_delta='',ratio='',interpretation='N/A',significant=False,status='',reason='',
+    driver_method=a.get('IC_impact_method',''),driver_probe_bonds_ok=a['probe_bonds_ok'],
+    response_probe_bonds_ok=b['probe_bonds_ok'])
+
+
+def collect_ic_response(state,kind,row,perturbed,linear_tol):
+  """Measure only selected coordinates on the existing IC_impact geometry."""
+  driver = state['by_key'].get((kind,row['ref_atoms']))
+  if driver is None:
+    return
+  state['processed'].add(driver['id'])
+  for target in state['candidates']:
+    if target['id'] == driver['id']:
+      continue
+    record = ic_response_record(driver,target)
+    try:
+      value = coordinate_value(perturbed,target['atoms'],target['kind'],linear_tol)
+      induced = value-target['row']['ref_value']
+      if target['kind'] == 'dihedral':
+        induced = (induced+180.)%360.-180.
+    except (ValueError,FloatingPointError) as exc:
+      record.update(status='response_unavailable',reason=str(exc))
+      state['records'].append(record)
+      continue
+    actual = record['actual_delta']
+    floor = state['bond_floor'] if target['kind'] == 'bond' else state['angle_floor']
+    record['induced_delta'] = induced
+    if abs(actual) < floor:
+      record.update(status='small_observed_change',reason='Observed change is below the response denominator floor')
+    else:
+      ratio = induced/actual
+      significant = abs(induced)+1e-12 >= floor and abs(ratio)+1e-12 >= state['min_ratio']
+      if not significant:
+        label = 'WEAK'
+      elif ratio < 0:
+        label = 'OPPOSITE'
+      elif 0.8-1e-10 <= ratio <= 1.2+1e-10:
+        label = 'MATCH'
+      elif ratio < 0.8:
+        label = 'PARTIAL'
+      else:
+        label = 'OVERSHOOT'
+      record.update(ratio=ratio,interpretation=label,significant=significant,status='ok')
+    state['records'].append(record)
+
+
+def finalize_ic_response(state):
+  """Retain unavailable drivers explicitly; never compress the selected ranks."""
+  if state['finalized']:
+    return
+  for driver in state['candidates']:
+    if driver['id'] in state['processed']:
+      continue
+    for target in state['candidates']:
+      if target['id'] == driver['id']:
+        continue
+      record = ic_response_record(driver,target)
+      record.update(status='driver_unavailable',reason=driver['row'].get('IC_impact_reason','')
+        or 'No verified single-coordinate geometry is available')
+      state['records'].append(record)
+  state['finalized'] = True
+
+
+def ic_response_sort_key(record):
+  """Prefer observed-change matches, not arbitrarily large response ratios."""
+  order = {'MATCH':0,'PARTIAL':1,'OVERSHOOT':2,'OPPOSITE':3}
+  ratio = record['ratio']
+  closeness = abs(ratio-1.) if ratio >= 0 else abs(abs(ratio)-1.)
+  return (order[record['interpretation']],closeness,record['driver_id'],record['response_id'])
+
+
+def print_ic_response_table(headers,rows,numeric=()):
+  """Keep label columns left-aligned and all table boundaries consistent."""
+  widths = [max(len(header),max((len(row[i]) for row in rows),default=0))
+    for i,header in enumerate(headers)]
+  for cells in [headers]+rows:
+    print('  '.join(text.rjust(widths[i]) if i in numeric else text.ljust(widths[i])
+      for i,text in enumerate(cells)).rstrip())
+
+
+def ic_response_report(state,csv_prefix=None):
+  """Always export all prominent responses; optionally export all directed pairs."""
+  finalize_ic_response(state)
+  candidates,records = state['candidates'],state['records']
+  prominent = sorted((record for record in records if record['significant']),key=ic_response_sort_key)
+  shown = prominent[:state['show']]
+  response_fields = ['driver_id','response_id','driver_kind','response_kind','driver_ref_atoms',
+    'driver_probe_atoms','response_ref_atoms','response_probe_atoms','driver_delta','driver_unit',
+    'actual_delta','response_unit','induced_delta','ratio','interpretation','significant','status','reason',
+    'driver_method','driver_probe_bonds_ok','response_probe_bonds_ok']
+  prominent_csv = 'ic_response_prominent.csv'
+  write_csv(prominent_csv,prominent,response_fields)
+  print('========================== IC DRIVE-RESPONSE ==========================')
+  print('Single-coordinate-driven geometric hypotheses; necessary coupled changes are allowed.')
+  print('Same full-REF branch model as IC_impact; no energy relaxation, statistical correlation or causality.')
+  print(f"Selection: up to {state['top']} changes per category; {len(candidates)} coordinates; "
+    f"{len(records)} directed pairs (self-responses excluded).")
+  print(f"Visible responses require |induced| >= {state['bond_floor']:g} A / {state['angle_floor']:g} deg "
+    f"and |Ratio| >= {state['min_ratio']:g}; observed changes use the same denominator floors.")
+  print('Ratio = induced / actual REF->PROBE change of the RESPONSE coordinate; NOT a contribution fraction.')
+  print('MATCH 0.8-1.2; PARTIAL positive <0.8; OVERSHOOT >1.2; OPPOSITE negative (after visibility filters).')
+  print('Zero/weak response means weak response under this rigid-branch model, NOT absence of physical coupling.')
+  print('Candidate IDs use within-category |delta| ranks; REF/PROBE atom mapping is preserved:')
+  candidate_rows = []
+  for item in candidates:
+    row = item['row']
+    status = 'OK' if row.get('IC_impact_status') == 'ok' else 'N/A'
+    if not row['probe_bonds_ok']:
+      status += '/WARN'
+    unit = 'A' if item['kind'] == 'bond' else 'deg'
+    candidate_rows.append([item['id'],row['ref_atoms'],row['probe_atoms'],
+      row['dihedral_type'] or item['kind'],f"{row['delta']:+.6f} {unit}",status])
+  print_ic_response_table(['ID','REF atoms','PROBE atoms','Type','Actual delta','Drive'],candidate_rows)
+  if shown:
+    print(f"\nProminent directed responses: showing {len(shown)} / {len(prominent)}; "
+      'priority MATCH > PARTIAL > OVERSHOOT > OPPOSITE, then amplitude agreement.')
+    print('The detailed response coordinates have been exported to a CSV file.')
+    print('In general, coordinate pairs whose Interpretation is MATCH should not')
+    print('be fixed simultaneously during optimization.')
+    display = []
+    for record in shown:
+      unit = 'A' if record['response_kind'] == 'bond' else 'deg'
+      display.append([record['driver_id'], '->', record['response_id'],
+        f"{record['actual_delta']:+.6f}", f"{record['induced_delta']:+.6f}",unit,
+        f"{record['ratio']:+.3f}",record['interpretation']])
+    print_ic_response_table(['Driver','','Response','Actual delta','Induced delta','Unit','Ratio','Interpretation'],
+      display,numeric=(3,4,6))
+  else:
+    print('\nNo directed response passes the visibility filters among the selected coordinates.')
+  counts = {label:sum(record['interpretation']==label for record in prominent)
+    for label in ('MATCH','PARTIAL','OVERSHOOT','OPPOSITE')}
+  usable = len(state['processed'])
+  weak = sum(record['interpretation']=='WEAK' for record in records)
+  small = sum(record['status']=='small_observed_change' for record in records)
+  unavailable = sum(record['status'] in ('driver_unavailable','response_unavailable') for record in records)
+  print(f"Summary: usable drivers {usable}/{len(candidates)}; prominent {len(prominent)} "
+    f"(MATCH {counts['MATCH']}, PARTIAL {counts['PARTIAL']}, OVERSHOOT {counts['OVERSHOOT']}, "
+    f"OPPOSITE {counts['OPPOSITE']}); weak {weak}; small observed {small}; unavailable pairs {unavailable}.")
+  for item in candidates:
+    if item['id'] not in state['processed']:
+      print(f"  Drive N/A {item['id']}: {item['row'].get('IC_impact_reason','unavailable')}")
+  if any(not item['row']['probe_bonds_ok'] for item in candidates):
+    print('WARN candidates fail a PROBE connectivity criterion; retained responses are conditional on fixed REF topology.')
+  if csv_prefix:
+    candidate_fields = ['id','rank','kind','dihedral_type','ref_atoms','probe_atoms','elements',
+      'ref_value','probe_value','delta','abs_delta','unit','probe_bonds_ok',
+      'IC_impact_status','IC_impact_method','IC_impact_reason']
+    candidate_records = [dict(id=item['id'],rank=item['rank'],
+      **{key:item['row'][key] for key in candidate_fields if key not in ('id','rank')}) for item in candidates]
+    write_csv(csv_prefix+'_ic_response_candidates.csv',candidate_records,candidate_fields)
+    write_csv(csv_prefix+'_ic_response_all.csv',records,response_fields)
+    write_csv(csv_prefix+'_ic_response_top.csv',shown,response_fields)
+    print('IC response candidates, all pairs and displayed relations saved using the CSV prefix.')
+  print(f'All prominent directed responses ({len(prominent)}) exported to: {prominent_csv} (working directory; replaces existing file).')
+  print('======================================================================\n')
+  return records
+
+
 def annotate_internal_cliffs(ranked, drop_percent=30., global_gap_percent=1.,
   bond_gap=0.001, angle_gap=0.1, enabled=True):
   """Annotate adjacent |delta| cliffs in each complete sorted category.
@@ -1438,6 +1620,18 @@ def main(argv=None):
   parser.add_argument('--probe-atoms', help='Paired in the exact order of REF selection')
   parser.add_argument('--all', action='store_true', help='Compare all atoms in file order without prompts')
   parser.add_argument('--top', type=int, default=10)
+  parser.add_argument('--ic-response-top',type=int,default=10,
+    help='Top |delta| coordinates per category for drive-response analysis (default: 10)')
+  parser.add_argument('--ic-response-show',type=int,default=20,
+    help='Maximum prominent directed responses printed (default: 20)')
+  parser.add_argument('--ic-response-min-ratio',type=float,default=0.2,
+    help='Minimum absolute induced/observed ratio for a visible response (default: 0.2)')
+  parser.add_argument('--ic-response-bond-floor',type=float,default=0.001,
+    help='Observed/induced bond-change visibility floor in Angstrom (default: 0.001)')
+  parser.add_argument('--ic-response-angle-floor',type=float,default=0.1,
+    help='Observed/induced angle and dihedral visibility floor in degrees (default: 0.1)')
+  parser.add_argument('--skip-ic-response',action='store_true',help='Skip geometric drive-response analysis')
+
   parser.add_argument('--cliff-drop-percent',type=float,default=30.,
     help='Minimum adjacent |delta| drop percent for a cliff (default: 30)')
   parser.add_argument('--cliff-global-gap-percent',type=float,default=1.,
@@ -1489,6 +1683,12 @@ def main(argv=None):
   parser.add_argument('--whole-thresholds',default='0.02,0.10,0.25',
     help='Three increasing dRMSD/mean-Rg reporting cutoffs')
   args = parser.parse_args(argv)
+  if min(args.ic_response_top,args.ic_response_show) < 1:
+    parser.error('--ic-response-top and --ic-response-show must be positive')
+  if any(not np.isfinite(value) or value <= 0 for value in
+    (args.ic_response_min_ratio,args.ic_response_bond_floor,args.ic_response_angle_floor)):
+    parser.error('IC response ratio and visibility floors must be positive and finite')
+
   if not np.isfinite(args.cliff_drop_percent) or not 0 < args.cliff_drop_percent <= 100:
     parser.error('--cliff-drop-percent must lie in (0, 100]')
   if not np.isfinite(args.cliff_global_gap_percent) or not 0 <= args.cliff_global_gap_percent <= 100:
@@ -1597,7 +1797,10 @@ def main(argv=None):
     advanced_report(sa, ca, sb, cb, ra, pb, infer_bonds(ca, ref_radii),
       infer_bonds(cb, probe_radii), args)
   ranked, excluded = compare_internal(a,b,symbols,ra,pb,bonds,probe_bonds,args.linear_tol)
-  add_internal_coordinate_impacts(ranked,ca,infer_bonds(ca,ref_radii),ra,args.linear_tol)
+  response_analysis = None if args.skip_ic_response else prepare_ic_response(ranked,
+    args.ic_response_top,args.ic_response_show,args.ic_response_min_ratio,
+    args.ic_response_bond_floor,args.ic_response_angle_floor)
+  add_internal_coordinate_impacts(ranked,ca,infer_bonds(ca,ref_radii),ra,args.linear_tol,response_analysis)
   annotate_internal_cliffs(ranked,args.cliff_drop_percent,args.cliff_global_gap_percent,
     args.cliff_bond_gap,args.cliff_angle_gap,not args.no_cliffs)
   all_rows, top_rows = [], []
@@ -1641,6 +1844,8 @@ def main(argv=None):
   for row in excluded:
     print(f"  {row['kind']} REF {row['ref_atoms']} / PROBE {row['probe_atoms']}: {row['reason']} (type={row['dihedral_type'] or '-'})")
   print('==========================================================================\n')
+  if response_analysis is not None:
+    ic_response_report(response_analysis,args.csv_prefix)
   if whole_selected and not args.skip_whole:
     whole_molecule_report(symbols,a,b,ra,pb,bonds,probe_bonds,args)
   if args.csv_prefix:
