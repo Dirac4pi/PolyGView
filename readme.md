@@ -23,11 +23,12 @@ export GV_ROOT='/path/to/gv'
 ```
 
 &nbsp;&nbsp;&nbsp;&nbsp;You need to create an environment with `networkx`,
-`NumPy`, `RDKit`, `QCElemental`, `xtb` and `freesasa-python`. If you
-are working with a Linux machine, it is recommended that you grant all scripts
-executable permissions and replace the shebangs in all the scripts with the
-path to the Python interpreter of the environment, it will enable you to use
-scripts in any scenario.
+`NumPy`, `RDKit`, `QCElemental`; optionally, install `scipy`, `dftd4`, `pyscf`
+for quantmol.py, and `xtb`, `freesasa-python` for solvmol.py. If you are working
+with a Linux machine, it is recommended that you grant all scripts executable
+permissions and replace the shebangs in all the scripts with the path to the
+Python interpreter of the environment, it will enable you to use scripts in any
+scenario.
 
 ## gview.py
 
@@ -97,9 +98,10 @@ periodic systems. Usage: `gjf2xyz.py input.gjf`.<br>
 ## log2xyz.py
 
 &nbsp;&nbsp;&nbsp;&nbsp;Extract a selected geometry from a Gaussian optimization
-log as a single-frame XYZ file, preserving atom order and Angstrom coordinates.
-Usage: `log2xyz.py abc.log -12` exports forward-counted frame 12 to
-`12_abc.xyz` in the current directory; `-12` does not mean counting backward.<br>
+or relaxed scan log as a single-frame XYZ file, preserving atom order and
+Angstrom coordinates. Usage: `log2xyz.py abc.log -12` exports forward-counted
+frame 12 to `12_abc.xyz` in the current directory; `-12` does not mean counting
+backward.<br>
 &nbsp;&nbsp;&nbsp;&nbsp;Frame numbering uses one orientation convention within
 the selected job (Standard orientation preferred), retaining the final printed
 optimization geometry while excluding subsequent frequency jobs. The XYZ comment
@@ -133,7 +135,8 @@ The report comprises five complementary sections:
 - DISPLACEMENT: summarizes internal-distance changes and extracts dominant
   difference patterns through distance-matrix decomposition.
 - CORE: examines stereochemical, coordination and ring-conformation changes.
-- INTERNAL_COORD: ranks the largest local geometric changes.
+- INTERNAL_COORD: ranks the largest local geometric changes and their impact
+  and correlation.
 - WHOLE_MOLECULE: compares overall topology and shape when both selections
   cover the entire molecule.
 
@@ -152,6 +155,62 @@ comparison and `--csv-prefix compare` to export results.
 ```shell
 diffmol.py ref.xyz probe.xyz --all --csv-prefix compare
 ```
+
+&nbsp;&nbsp;&nbsp;&nbsp;For more info, run `diffmol.py --help`
+
+## quantmol.py
+
+&nbsp;&nbsp;&nbsp;&nbsp;Analyze a single XYZ conformer or compare two conformers
+through complementary numerical diagnostics and model-based physical descriptors.
+Extending the geometry-focused analysis of diffmol.py, quantmol.py examines basis
+redundancy, overlap-environment changes, dispersion contributions and nonbonded
+contact organization without optimizing the input structures or running molecular
+SCF calculations.<br>
+
+The analysis combines six complementary modules:
+
+- BASIS_HEALTH: checks overlap conditioning, locates near-redundant atomic
+  shells and provides auxiliary kinetic-spectrum diagnostics.
+- FINGERPRINT: stores a single-structure overlap signature or compares global
+  and local overlap environments between conformers.
+- METRIC: measures relative AO-metric distortion in two-conformer mode; it is
+  not an occupied-orbital distance or a prediction of SCF failure.
+- DISPERSION: resolves D4 contributions by atom pair and reporting fragment,
+  separating local redistribution from the total dispersion difference.
+- POLARIZATION: estimates classical static response using a damped Thole model,
+  subject to explicit parameter coverage and response-stability checks.
+- IGM: maps reference-density contacts, with covalent-neighbor filtering and
+  grid/box sensitivity checks for selected absolute integrals or conformer changes.
+
+&nbsp;&nbsp;&nbsp;&nbsp;Single-conformer mode provides a numerical health check
+and contact/dispersion contribution tables; comparison mode identifies where these
+quantities change. Concise terminal interpretations, explicit verification labels
+and JSON/CSV exports support screening optimized structures, tracing ligand or
+substrate contact rearrangements, and deciding which regions merit further study.
+These are model diagnostics, not total conformer energies, interaction-energy
+maps, multireference diagnoses or quantitative reactivity predictions.<br>
+
+Usage: `quantmol.py input.xyz` for one conformer, or
+`quantmol.py ref.xyz probe.xyz` for comparison. Enter `C/c` at the selection
+prompt(s), or use `--all` to analyze complete molecules without prompts. Ordered
+1-based selections use `--ref-atoms` and, in comparison mode, `--probe-atoms`.
+Selected atoms form the complete modeled subsystem without capping; prefer full
+molecules with `--fragments fragments.json` for physical interpretation.
+
+```shell
+quantmol.py Fe1.xyz --all --charge 0 --skip-polar --csv-prefix Fe1_single
+quantmol.py Fe1.xyz Fe2.xyz --all --basis def2-tzvpd --charge 0 --skip-polar --csv-prefix Fe1_Fe2
+```
+
+&nbsp;&nbsp;&nbsp;&nbsp;Set the actual molecular charge with `--charge` (default
+0), and choose the AO basis with `--basis` (default `def2-svp`).
+`--d4-method` selects a damping parameter set, not a DFT calculation.
+`--fragments` accepts disjoint named lists of original REF atom numbers in JSON;
+unlisted selected atoms form an additional reporting fragment. `--top` limits
+printed rows, while `--csv-prefix` exports detailed results. Existing outputs
+require `--overwrite`.<br>
+
+&nbsp;&nbsp;&nbsp;&nbsp;For more info, run `quantmol.py --help`
 
 ## solvmol.py
 
@@ -177,6 +236,8 @@ probe-radius preset, enter the radius in Angstrom when prompted.
 ```shell
 solvmol.py ref.xyz probe.xyz --solvent water --charge 0 --uhf 0
 ```
+
+&nbsp;&nbsp;&nbsp;&nbsp;For more info, run `solvmol.py --help`
 
 ## mdf.py
 
